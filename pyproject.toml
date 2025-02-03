@@ -1,0 +1,12 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "endstone-playerinfo"
+version = "0.0.5"
+author = "Kyel0"
+description = "Shows basic player information"
+
+[project.entry-points."endstone"]
+playerinfo = "endstone_playerinfo:PlayerInfo"
