@@ -5,6 +5,7 @@ from endstone.plugin import Plugin
 from endstone.event import event_handler, PlayerJoinEvent, PlayerDeathEvent, PlayerQuitEvent, BlockBreakEvent, BlockPlaceEvent
 from endstone.command import Command, CommandSender
 from endstone import ColorFormat, Player
+from typing import Tuple, List
 
 class PlayerInfo(Plugin):
     api_version = "0.5"
@@ -13,7 +14,11 @@ class PlayerInfo(Plugin):
         "playerinfo": {
             "description": "Shows basic player information.",
             "usages": ["/playerinfo [player: player]"],
-        }
+        },
+        "top": {
+            "description": "Displays the top players based on deaths, playtime, blocks placed, or blocks broken.",
+            "usages": ["/top (deaths|time|blocks_placed|blocks_broken)<name: EnumType>"],
+        },
     }
 
     def __init__(self):
@@ -115,12 +120,13 @@ class PlayerInfo(Plugin):
         if not data:
             data = {
                 "name": player.name,
-                "device": player.device_os,
                 "play_time": 0,
                 "deaths": 0,
                 "blocks_placed": 0,
                 "blocks_broken": 0
             }
+
+            data["device"] = player.device_os
             self.update_player_data(player.name, data)
         self.last_update[player.name] = int(time.time() * 1000)
 
@@ -164,25 +170,82 @@ class PlayerInfo(Plugin):
             if not isinstance(sender, Player):
                 sender.send_error_message("This command can only be executed by a player")
                 return False
-            player_name = sender.name if len(args) == 0 else args[0]
-
-            if player_name in self.last_update:
+            
+            player_name = sender.name if not args else args[0]
+            
+            online_player = self.server.get_player(player_name)
+            if online_player:
                 self.update_play_time(player_name)
-
+            
             data = self.get_player_data(player_name)
-            if data:
-                play_time_formatted = self.format_time(data["play_time"])
-                sender.send_message(
-                    f"{ColorFormat.AQUA}--- Player Info: {ColorFormat.DARK_AQUA}{data['name']} ---\n\n"
-                    f"{ColorFormat.WHITE}Name: {ColorFormat.MATERIAL_AMETHYST}{data['name']}\n"
-                    f"{ColorFormat.WHITE}Device: {ColorFormat.MATERIAL_AMETHYST}{data['device']}\n"
-                    f"{ColorFormat.WHITE}Play Time: {ColorFormat.MATERIAL_AMETHYST}{play_time_formatted}\n"
-                    f"{ColorFormat.WHITE}Deaths: {ColorFormat.MATERIAL_AMETHYST}{data['deaths']}\n"
-                    f"{ColorFormat.WHITE}Blocks Placed: {ColorFormat.MATERIAL_AMETHYST}{data['blocks_placed']}\n"
-                    f"{ColorFormat.WHITE}Blocks Broken: {ColorFormat.MATERIAL_AMETHYST}{data['blocks_broken']}\n"
-                    f"{ColorFormat.WHITE}Ping: {ColorFormat.MATERIAL_AMETHYST}{sender.ping} ms"
-                )
-            else:
+            if not data:
                 sender.send_message(ColorFormat.RED + f"Player {player_name} not found.")
+                return True
+            
+            target_ping = online_player.ping if online_player else "N/A"
+            
+            play_time_formatted = self.format_time(data["play_time"])
+            sender.send_message(
+                f"{ColorFormat.AQUA}--- Player Info: {ColorFormat.DARK_AQUA}{data['name']} ---\n\n"
+                f"{ColorFormat.WHITE}Name: {ColorFormat.MATERIAL_AMETHYST}{data['name']}\n"
+                f"{ColorFormat.WHITE}Device: {ColorFormat.MATERIAL_AMETHYST}{data['device']}\n"
+                f"{ColorFormat.WHITE}Play Time: {ColorFormat.MATERIAL_AMETHYST}{play_time_formatted}\n"
+                f"{ColorFormat.WHITE}Deaths: {ColorFormat.MATERIAL_AMETHYST}{data['deaths']}\n"
+                f"{ColorFormat.WHITE}Blocks Placed: {ColorFormat.MATERIAL_AMETHYST}{data['blocks_placed']}\n"
+                f"{ColorFormat.WHITE}Blocks Broken: {ColorFormat.MATERIAL_AMETHYST}{data['blocks_broken']}\n"
+                f"{ColorFormat.WHITE}Ping: {ColorFormat.MATERIAL_AMETHYST}{target_ping} ms"
+            )
+            return True
+        
+        elif command.name == "top":
+            if not args:
+                sender.send_message(f"{ColorFormat.RED}Usage: /top <stat>")
+                return True
+            
+            stat = args[0].lower()
+            valid_stats = ["deaths", "time", "blocks_placed", "blocks_broken"]
 
-        return True
+            if stat not in valid_stats:
+                sender.send_message(f"{ColorFormat.RED}Invalid stat. Valid options: {', '.join(valid_stats)}")
+                return True
+
+            top_data = self.get_top_players(stat, 10)
+
+            if not top_data:
+                sender.send_message(f"{ColorFormat.RED}No data available for this stat.")
+                return True
+
+            header = f"{ColorFormat.AQUA} Top {stat.capitalize()} (Top 10)"
+            lines = [header]
+
+            for index, (player_name, value) in enumerate(top_data, 1):
+                if stat == "time":
+                    display_value = self.format_time(value)
+                else:
+                    display_value = f"{value:,}"
+                lines.append(
+                    f"{ColorFormat.WHITE}{index}. {ColorFormat.MATERIAL_AMETHYST}{player_name}: "
+                    f"{ColorFormat.WHITE}{display_value}"
+                )
+            sender.send_message("\n".join(lines))
+            return True
+    
+    def get_top_players(self, stat: str, limit: int = 10) -> List[Tuple[str, int]]:
+        column_mapping = {
+            "deaths": "deaths",
+            "time": "play_time",
+            "blocks_placed": "blocks_placed",
+            "blocks_broken": "blocks_broken"
+        }
+        
+        column = column_mapping.get(stat)
+        if not column:
+            return []
+        
+        self.cursor.execute(f"""
+            SELECT name, {column}
+            FROM player_stats
+            ORDER BY {column} DESC
+            LIMIT ?
+        """, (limit,))
+        return self.cursor.fetchall()

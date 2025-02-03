@@ -5,10 +5,16 @@
 ## Features
 - Track player playtime, deaths, blocks placed, and blocks broken.
 - Show detailed player info with the `/playerinfo` command.
+- Display top players based on deaths, playtime, blocks placed, or blocks broken using the `/top` command.
 - Store player data in an SQLite database.
 
-## Command
-`/playerinfo [player: player]` – Displays basic information about the specified player.
+## Commands
+
+### `/playerinfo [player: player]`  
+Displays basic information about the specified player.  
+
+### `/top (deaths|time|blocks_placed|blocks_broken)`  
+Displays the top players based on deaths, playtime, blocks placed, or blocks broken.  
 
 ## License
 
